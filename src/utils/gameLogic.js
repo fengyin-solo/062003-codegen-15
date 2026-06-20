@@ -15,11 +15,13 @@ export function createInitialGameState() {
     fans: CFG.initial.fans,
     totalRevenue: 0,
     totalExpenses: 0,
+    totalSharePayout: 0,
     trainees,
     groups: [],
     relationships: initRelationships(trainees),
     schedule: {},
     logs: [{ day: 1, text: '事务所成立！五位练习生已就位，三年征途正式开始。' }],
+    contractHistory: [],
     pendingEvent: null,
     pendingRating: false,
     gameStatus: 'playing',
@@ -278,10 +280,11 @@ export function processDay(state) {
   money -= dailyCost
   totalExpenses += dailyCost
 
-  const contractLogs = processDailyContracts(trainees, state.day, money, totalExpenses)
+  const contractLogs = processDailyContracts(trainees, state.day, money, totalExpenses, state.contractHistory || [])
   logs.push(...contractLogs.logs)
   money = contractLogs.money
   totalExpenses = contractLogs.totalExpenses
+  const contractHistory = contractLogs.contractHistory
 
   const newDay = state.day + 1
   const pendingRating = state.day % CFG.rating.interval === 0
@@ -339,6 +342,7 @@ export function processDay(state) {
     relationships,
     schedule: {},
     logs: [...state.logs, ...logs],
+    contractHistory,
     pendingEvent,
     pendingRating,
   }
@@ -535,10 +539,17 @@ export function releaseSingle(state, groupId) {
   const revenue = sales * CFG.single.revenuePerSale
 
   let totalSharePayout = 0
+  const shareRecords = []
   const trainees = state.trainees.map((t) => {
     if (!group.memberIds.includes(t.id)) return t
     const shareAmount = Math.round(revenue * t.contract.revenueShare)
     totalSharePayout += shareAmount
+    shareRecords.push({
+      traineeId: t.id,
+      traineeName: t.name,
+      sharePercent: t.contract.revenueShare,
+      amount: shareAmount,
+    })
     return {
       ...t,
       singlesReleased: t.singlesReleased + 1,
@@ -564,6 +575,19 @@ export function releaseSingle(state, groupId) {
     }
   })
 
+  const contractHistory = [
+    ...state.contractHistory,
+    {
+      day: state.day,
+      type: 'share_payout',
+      groupId,
+      groupName: group.name,
+      totalRevenue: revenue,
+      totalPayout: totalSharePayout,
+      shares: shareRecords,
+    },
+  ]
+
   const logs = [
     ...state.logs,
     {
@@ -579,10 +603,12 @@ export function releaseSingle(state, groupId) {
       money: state.money - CFG.single.creationCost + companyRevenue,
       totalRevenue: state.totalRevenue + companyRevenue,
       totalExpenses: state.totalExpenses + CFG.single.creationCost + totalSharePayout,
+      totalSharePayout: state.totalSharePayout + totalSharePayout,
       fans: state.fans + Math.round(sales * 0.02),
       groups,
       trainees,
       logs,
+      contractHistory,
       lastSingleDay: { ...state.lastSingleDay, [groupId]: state.day },
     },
     sales,
@@ -601,8 +627,9 @@ export function getRatingResults(state) {
     .sort((a, b) => b.score - a.score)
 }
 
-function processDailyContracts(trainees, day, money, totalExpenses) {
+function processDailyContracts(trainees, day, money, totalExpenses, contractHistoryIn) {
   const logs = []
+  const contractHistory = [...contractHistoryIn]
 
   for (const trainee of trainees) {
     if (trainee.status === 'left') continue
@@ -625,6 +652,15 @@ function processDailyContracts(trainees, day, money, totalExpenses) {
       const departureChance = (100 - trainee.contract.loyalty) / 100
       if (Math.random() < departureChance * 0.3) {
         trainee.status = 'left'
+        contractHistory.push({
+          day,
+          type: 'departure',
+          traineeId: trainee.id,
+          traineeName: trainee.name,
+          groupId: trainee.groupId,
+          reason: 'contract_expired_no_renewal',
+          finalLoyalty: trainee.contract.loyalty,
+        })
         logs.push({
           day,
           text: `💔 ${trainee.name} 因合约到期未续约，离开了事务所！`,
@@ -647,7 +683,7 @@ function processDailyContracts(trainees, day, money, totalExpenses) {
     })
   }
 
-  return { logs, money, totalExpenses }
+  return { logs, money, totalExpenses, contractHistory }
 }
 
 export function getExpiringContracts(state) {
@@ -772,6 +808,7 @@ export function negotiateContract(state, traineeId, offerShare, offerSalary, ter
 export function acceptContract(state, traineeId) {
   const trainees = state.trainees.map((t) => ({ ...t, stats: { ...t.stats }, contract: { ...t.contract } }))
   const logs = [...state.logs]
+  const contractHistory = [...state.contractHistory]
   const trainee = trainees.find((t) => t.id === traineeId)
 
   if (!trainee || !trainee.contract.pendingOffer) {
@@ -779,6 +816,11 @@ export function acceptContract(state, traineeId) {
   }
 
   const offer = trainee.contract.pendingOffer
+  const oldContract = {
+    endDay: trainee.contract.endDay,
+    revenueShare: trainee.contract.revenueShare,
+    baseSalary: trainee.contract.baseSalary,
+  }
 
   trainee.contract.startDay = state.day
   trainee.contract.endDay = state.day + offer.termDays
@@ -794,6 +836,21 @@ export function acceptContract(state, traineeId) {
 
   trainee.stress = clamp(trainee.stress - CFG.contract.moraleImpactOnAccept, 0, 100)
 
+  contractHistory.push({
+    day: state.day,
+    type: 'renewal',
+    traineeId,
+    traineeName: trainee.name,
+    groupId: trainee.groupId,
+    oldContract,
+    newContract: {
+      termDays: offer.termDays,
+      revenueShare: offer.offeredShare,
+      baseSalary: offer.offeredSalary,
+    },
+    result: 'accepted',
+  })
+
   logs.push({
     day: state.day,
     text: `📝 ${trainee.name} 续约成功！新合约期限 ${offer.termDays} 天，分成 ${(offer.offeredShare * 100).toFixed(1)}%，月薪 ¥${offer.offeredSalary.toLocaleString()}。`,
@@ -801,18 +858,21 @@ export function acceptContract(state, traineeId) {
 
   return {
     success: true,
-    state: { ...state, trainees, logs },
+    state: { ...state, trainees, logs, contractHistory },
   }
 }
 
 export function rejectContract(state, traineeId) {
   const trainees = state.trainees.map((t) => ({ ...t, stats: { ...t.stats }, contract: { ...t.contract } }))
   const logs = [...state.logs]
+  const contractHistory = [...state.contractHistory]
   const trainee = trainees.find((t) => t.id === traineeId)
 
   if (!trainee || !trainee.contract.pendingOffer) {
     return { success: false, message: '没有待处理的合约' }
   }
+
+  const offer = trainee.contract.pendingOffer
 
   trainee.contract.pendingOffer = null
   trainee.contract.loyalty = clamp(
@@ -822,6 +882,25 @@ export function rejectContract(state, traineeId) {
   )
   trainee.stress = clamp(trainee.stress + CFG.contract.moraleImpactOnReject, 0, 100)
 
+  contractHistory.push({
+    day: state.day,
+    type: 'negotiation_failed',
+    traineeId,
+    traineeName: trainee.name,
+    groupId: trainee.groupId,
+    lastOffer: {
+      revenueShare: offer.offeredShare,
+      baseSalary: offer.offeredSalary,
+      termDays: offer.termDays,
+    },
+    desired: {
+      revenueShare: offer.desiredShare,
+      baseSalary: offer.desiredSalary,
+    },
+    result: 'rejected',
+    departed: false,
+  })
+
   logs.push({
     day: state.day,
     text: `😤 ${trainee.name} 对谈判结果不满，谈判破裂！忠诚度下降。`,
@@ -830,6 +909,16 @@ export function rejectContract(state, traineeId) {
   const daysLeft = trainee.contract.endDay - state.day
   if (daysLeft <= 0 && trainee.contract.loyalty < CFG.contract.departureRiskThreshold) {
     trainee.status = 'left'
+    contractHistory.push({
+      day: state.day,
+      type: 'departure',
+      traineeId,
+      traineeName: trainee.name,
+      groupId: trainee.groupId,
+      reason: 'contract_expired_negotiation_failed',
+      finalLoyalty: trainee.contract.loyalty,
+    })
+    contractHistory[contractHistory.length - 2].departed = true
     logs.push({
       day: state.day,
       text: `💔 ${trainee.name} 因谈判破裂且忠诚度过低，离开了事务所！`,
@@ -844,6 +933,7 @@ export function rejectContract(state, traineeId) {
       ...state,
       trainees,
       logs,
+      contractHistory,
       gameStatus: result || state.gameStatus,
     },
   }
@@ -881,4 +971,71 @@ export function getContractDepartureRisk(trainee, currentDay) {
   if (loyalty < 40) return 'high'
   if (loyalty < 60) return 'medium'
   return 'low'
+}
+
+export function getGroupContractStatus(state) {
+  return state.groups.map((group) => {
+    const members = state.trainees.filter((t) => group.memberIds.includes(t.id) && t.status !== 'left')
+    const memberContracts = members.map((m) => ({
+      trainee: m,
+      daysRemaining: m.contract.endDay - state.day,
+      loyalty: m.contract.loyalty,
+      revenueShare: m.contract.revenueShare,
+      baseSalary: m.contract.baseSalary,
+      risk: getContractDepartureRisk(m, state.day),
+      hasPendingOffer: !!m.contract.pendingOffer,
+    }))
+
+    const riskCounts = { critical: 0, high: 0, medium: 0, low: 0 }
+    memberContracts.forEach((mc) => { riskCounts[mc.risk]++ })
+
+    const expiring = memberContracts.filter(
+      (mc) => mc.daysRemaining <= CFG.contract.warningDaysBeforeExpiry
+    )
+
+    const avgShare = members.length > 0
+      ? members.reduce((s, m) => s + m.contract.revenueShare, 0) / members.length
+      : 0
+
+    const totalMonthlySalary = members.reduce((s, m) => s + m.contract.baseSalary, 0)
+
+    return {
+      groupId: group.id,
+      groupName: group.name,
+      members: memberContracts,
+      riskCounts,
+      expiringCount: expiring.length,
+      avgRevenueShare: avgShare,
+      totalMonthlySalary,
+      totalSales: group.totalSales,
+      singlesCount: group.singles.length,
+    }
+  })
+}
+
+export function getContractSummary(state) {
+  const active = getActiveTrainees(state)
+  const expiring = getExpiringContracts(state)
+  const pendingNegotiations = active.filter((t) => t.contract?.pendingOffer)
+  const groupStatus = getGroupContractStatus(state)
+
+  const totalMonthlySalary = active.reduce((s, t) => s + t.contract.baseSalary, 0)
+  const avgLoyalty = active.length > 0
+    ? active.reduce((s, t) => s + t.contract.loyalty, 0) / active.length
+    : 0
+
+  const recentHistory = (state.contractHistory || [])
+    .slice(-10)
+    .reverse()
+
+  return {
+    totalActive: active.length,
+    expiringCount: expiring.length,
+    pendingNegotiations: pendingNegotiations.length,
+    totalMonthlySalary,
+    totalSharePayout: state.totalSharePayout || 0,
+    avgLoyalty,
+    groupStatus,
+    recentHistory,
+  }
 }

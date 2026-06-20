@@ -16,6 +16,8 @@ import {
   acceptContract,
   rejectContract,
   getContractDepartureRisk,
+  getGroupContractStatus,
+  getContractSummary,
 } from '../utils/gameLogic'
 import { saveToSlot } from '../utils/storage'
 
@@ -175,6 +177,16 @@ export function useGame() {
     )
   }
 
+  function groupContractStatus() {
+    if (!state.value) return []
+    return getGroupContractStatus(state.value)
+  }
+
+  function contractSummary() {
+    if (!state.value) return null
+    return getContractSummary(state.value)
+  }
+
   return {
     state,
     currentSlot,
@@ -204,5 +216,7 @@ export function useGame() {
     handleRejectContract,
     getDepartureRisk,
     getPendingNegotiations,
+    groupContractStatus,
+    contractSummary,
   }
 }

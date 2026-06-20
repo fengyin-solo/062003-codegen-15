@@ -18,6 +18,8 @@
     :can-end-day="canEndDay()"
     :rating-results="getRatingResults()"
     :calc-score="calcTraineeScore"
+    :group-contract-status="groupContractStatus()"
+    :contract-summary="contractSummary()"
     @back="backToMenu"
     @toggle-theme="toggleTheme"
     @set-schedule="setSchedule"
@@ -68,6 +70,8 @@ const {
   handleNegotiate,
   handleAcceptContract,
   handleRejectContract,
+  groupContractStatus,
+  contractSummary,
 } = useGame()
 
 onMounted(() => {

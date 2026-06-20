@@ -41,7 +41,10 @@
           :trainees="state.trainees"
           :money="state.money"
           :current-day="state.day"
+          :group-status="groupContractStatus"
+          :contract-summary="contractSummary"
           @release="(id) => $emit('release-single', id)"
+          @negotiate="openNegotiation"
         />
         <RelationshipPanel
           :trainees="state.trainees"
@@ -117,6 +120,8 @@ const props = defineProps({
   canEndDay: Boolean,
   ratingResults: Array,
   calcScore: Function,
+  groupContractStatus: Array,
+  contractSummary: Object,
 })
 
 const emit = defineEmits([
