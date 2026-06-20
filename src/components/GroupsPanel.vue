@@ -14,6 +14,9 @@
         <span>总销量 {{ group.totalSales.toLocaleString() }}</span>
         <span>{{ group.singles.length }} 张单曲</span>
       </div>
+      <div v-if="contractInfo(group).expiring > 0" class="contract-warning">
+        ⚠️ {{ contractInfo(group).expiring }} 名成员合约即将到期
+      </div>
       <button
         class="btn primary sm"
         :disabled="money < singleCost"
@@ -32,6 +35,7 @@ const props = defineProps({
   groups: Array,
   trainees: Array,
   money: Number,
+  currentDay: { type: Number, default: 1 },
 })
 
 defineEmits(['release'])
@@ -42,6 +46,18 @@ function memberNames(group) {
   return group.memberIds
     .map((id) => props.trainees.find((t) => t.id === id)?.name)
     .filter(Boolean)
+}
+
+function contractInfo(group) {
+  const members = group.memberIds
+    .map((id) => props.trainees.find((t) => t.id === id))
+    .filter(Boolean)
+  const expiring = members.filter((m) => {
+    if (!m.contract) return false
+    const daysLeft = m.contract.endDay - props.currentDay
+    return daysLeft <= GAME_CONFIG.contract.warningDaysBeforeExpiry
+  }).length
+  return { expiring }
 }
 </script>
 
@@ -82,6 +98,15 @@ function memberNames(group) {
   gap: 1rem;
   font-size: 0.8rem;
   color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.contract-warning {
+  font-size: 0.8rem;
+  color: #ff9800;
+  background: rgba(255, 152, 0, 0.1);
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
   margin-bottom: 0.5rem;
 }
 </style>

@@ -27,6 +27,10 @@
     @debut="onDebut"
     @resolve-poaching="handlePoaching"
     @release-single="onReleaseSingle"
+    @start-negotiation="onStartNegotiation"
+    @negotiate-contract="onNegotiate"
+    @accept-contract="onAcceptContract"
+    @reject-contract="onRejectContract"
   />
 </template>
 
@@ -60,6 +64,10 @@ const {
   backToMenu,
   getRatingResults,
   calcTraineeScore,
+  handleStartNegotiation,
+  handleNegotiate,
+  handleAcceptContract,
+  handleRejectContract,
 } = useGame()
 
 onMounted(() => {
@@ -96,5 +104,25 @@ function onReleaseSingle(groupId) {
   if (result && !result.success) {
     alert(result.message)
   }
+}
+
+function onStartNegotiation(traineeId, callback) {
+  const result = handleStartNegotiation(traineeId)
+  if (callback) callback(result)
+}
+
+function onNegotiate(traineeId, share, salary, term, callback) {
+  const result = handleNegotiate(traineeId, share, salary, term)
+  if (callback) callback(result)
+}
+
+function onAcceptContract(traineeId, callback) {
+  const result = handleAcceptContract(traineeId)
+  if (callback) callback(result)
+}
+
+function onRejectContract(traineeId, callback) {
+  const result = handleRejectContract(traineeId)
+  if (callback) callback(result)
 }
 </script>

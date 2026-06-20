@@ -10,6 +10,12 @@ import {
   calcProfit,
   calcTraineeScore,
   getRelationship,
+  getExpiringContracts,
+  startContractNegotiation,
+  negotiateContract,
+  acceptContract,
+  rejectContract,
+  getContractDepartureRisk,
 } from '../utils/gameLogic'
 import { saveToSlot } from '../utils/storage'
 
@@ -112,6 +118,63 @@ export function useGame() {
     return getRelationship(state.value.relationships, idA, idB)
   }
 
+  function expiringContracts() {
+    if (!state.value) return []
+    return getExpiringContracts(state.value)
+  }
+
+  function handleStartNegotiation(traineeId) {
+    if (!state.value) return null
+    const result = startContractNegotiation(state.value, traineeId)
+    if (result.success) {
+      state.value = result.state
+      autoSave()
+    }
+    return result
+  }
+
+  function handleNegotiate(traineeId, offerShare, offerSalary, termDays) {
+    if (!state.value) return null
+    const result = negotiateContract(state.value, traineeId, offerShare, offerSalary, termDays)
+    if (result.success) {
+      state.value = result.state
+      autoSave()
+    }
+    return result
+  }
+
+  function handleAcceptContract(traineeId) {
+    if (!state.value) return null
+    const result = acceptContract(state.value, traineeId)
+    if (result.success) {
+      state.value = result.state
+      autoSave()
+    }
+    return result
+  }
+
+  function handleRejectContract(traineeId) {
+    if (!state.value) return null
+    const result = rejectContract(state.value, traineeId)
+    if (result.success) {
+      state.value = result.state
+      autoSave()
+    }
+    return result
+  }
+
+  function getDepartureRisk(trainee) {
+    if (!state.value) return 'low'
+    return getContractDepartureRisk(trainee, state.value.day)
+  }
+
+  function getPendingNegotiations() {
+    if (!state.value) return []
+    return state.value.trainees.filter(
+      (t) => t.contract?.pendingOffer && t.status !== 'left'
+    )
+  }
+
   return {
     state,
     currentSlot,
@@ -134,5 +197,12 @@ export function useGame() {
     getRatingResults: () => (state.value ? getRatingResults(state.value) : []),
     calcTraineeScore,
     autoSave,
+    expiringContracts,
+    handleStartNegotiation,
+    handleNegotiate,
+    handleAcceptContract,
+    handleRejectContract,
+    getDepartureRisk,
+    getPendingNegotiations,
   }
 }

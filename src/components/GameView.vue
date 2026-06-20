@@ -17,6 +17,8 @@
             :key="t.id"
             :trainee="t"
             :score="calcScore(t)"
+            :current-day="state.day"
+            @negotiate="openNegotiation"
           />
         </div>
       </aside>
@@ -38,6 +40,7 @@
           :groups="state.groups"
           :trainees="state.trainees"
           :money="state.money"
+          :current-day="state.day"
           @release="(id) => $emit('release-single', id)"
         />
         <RelationshipPanel
@@ -67,6 +70,18 @@
       @resolve="(keep) => $emit('resolve-poaching', keep)"
     />
 
+    <ContractNegotiationModal
+      v-if="negotiatingTrainee"
+      :trainee="negotiatingTrainee"
+      :offer="negotiatingTrainee.contract.pendingOffer"
+      :current-day="state.day"
+      :score="calcScore(negotiatingTrainee)"
+      @close="negotiatingTrainee = null"
+      @negotiate="handleNegotiate"
+      @accept="handleAcceptContract"
+      @reject="handleRejectContract"
+    />
+
     <GameOverModal
       v-if="state.gameStatus !== 'playing'"
       :status="state.gameStatus"
@@ -80,7 +95,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import GameHeader from './GameHeader.vue'
 import TraineeCard from './TraineeCard.vue'
 import SchedulePanel from './SchedulePanel.vue'
@@ -90,6 +105,7 @@ import RelationshipPanel from './RelationshipPanel.vue'
 import RatingModal from './RatingModal.vue'
 import DebutModal from './DebutModal.vue'
 import EventModal from './EventModal.vue'
+import ContractNegotiationModal from './ContractNegotiationModal.vue'
 import GameOverModal from './GameOverModal.vue'
 
 const props = defineProps({
@@ -113,20 +129,86 @@ const emit = defineEmits([
   'debut',
   'resolve-poaching',
   'release-single',
+  'start-negotiation',
+  'negotiate-contract',
+  'accept-contract',
+  'reject-contract',
 ])
 
 const showDebut = ref(false)
 const toast = ref('')
+const negotiatingTraineeId = ref(null)
+
+const negotiatingTrainee = computed(() => {
+  if (!negotiatingTraineeId.value || !props.state) return null
+  return props.state.trainees.find((t) => t.id === negotiatingTraineeId.value)
+})
+
+function openNegotiation(traineeId) {
+  const trainee = props.state.trainees.find((t) => t.id === traineeId)
+  if (!trainee) return
+  if (!trainee.contract?.pendingOffer) {
+    emit('start-negotiation', traineeId, (result) => {
+      if (result?.success) {
+        negotiatingTraineeId.value = traineeId
+      } else if (result?.message) {
+        showToast(result.message)
+      }
+    })
+  } else {
+    negotiatingTraineeId.value = traineeId
+  }
+}
+
+function handleNegotiate(share, salary, term) {
+  if (!negotiatingTraineeId.value) return
+  emit('negotiate-contract', negotiatingTraineeId.value, share, salary, term, (result) => {
+    if (result?.success) {
+      if (result.offer?.negotiationFailed) {
+        showToast('谈判破裂！对方已失去耐心。')
+      }
+    } else if (result?.message) {
+      showToast(result.message)
+    }
+  })
+}
+
+function handleAcceptContract() {
+  if (!negotiatingTraineeId.value) return
+  emit('accept-contract', negotiatingTraineeId.value, (result) => {
+    if (result?.success) {
+      showToast('🎉 签约成功！')
+      setTimeout(() => { negotiatingTraineeId.value = null }, 500)
+    } else if (result?.message) {
+      showToast(result.message)
+    }
+  })
+}
+
+function handleRejectContract() {
+  if (!negotiatingTraineeId.value) return
+  emit('reject-contract', negotiatingTraineeId.value, (result) => {
+    if (result?.success) {
+      showToast('谈判终止')
+      negotiatingTraineeId.value = null
+    } else if (result?.message) {
+      showToast(result.message)
+    }
+  })
+}
+
+function showToast(msg) {
+  toast.value = msg
+  setTimeout(() => { toast.value = '' }, 2500)
+}
 
 function onDebut(memberIds, groupName) {
   emit('debut', memberIds, groupName, (result) => {
     if (result?.success) {
       showDebut.value = false
-      toast.value = '出道成功！'
-      setTimeout(() => { toast.value = '' }, 2500)
+      showToast('出道成功！')
     } else if (result?.message) {
-      toast.value = result.message
-      setTimeout(() => { toast.value = '' }, 3000)
+      showToast(result.message)
     }
   })
 }

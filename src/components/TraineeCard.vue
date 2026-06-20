@@ -34,6 +34,27 @@
 
     <div v-if="trainee.illnessDays > 0" class="illness">🤒 休养中 ({{ trainee.illnessDays }}天)</div>
     <div v-if="trainee.fans > 0" class="fans">个人粉丝 {{ trainee.fans.toLocaleString() }}</div>
+
+    <div class="contract-section" v-if="trainee.contract">
+      <div class="contract-row">
+        <span class="contract-label">忠诚度</span>
+        <div class="bar small"><div class="fill loyalty" :style="{ width: trainee.contract.loyalty + '%' }"></div></div>
+        <span class="contract-val">{{ Math.round(trainee.contract.loyalty) }}</span>
+      </div>
+      <div class="contract-info">
+        <span :class="contractStatusClass">
+          {{ contractStatusText }}
+        </span>
+        <span class="contract-days">剩余 {{ contractDaysLeft }} 天</span>
+      </div>
+      <button
+        v-if="canNegotiate"
+        class="btn sm contract-btn"
+        @click.stop="$emit('negotiate', trainee.id)"
+      >
+        📝 续约谈判
+      </button>
+    </div>
   </div>
 </template>
 
@@ -44,7 +65,10 @@ import { GAME_CONFIG } from '../config/gameConfig'
 const props = defineProps({
   trainee: Object,
   score: { type: Number, default: null },
+  currentDay: { type: Number, default: 1 },
 })
+
+defineEmits(['negotiate'])
 
 const statKeys = GAME_CONFIG.stats
 const statLabels = GAME_CONFIG.statLabels
@@ -60,6 +84,36 @@ const statusClass = computed(() => ({
   left: props.trainee.status === 'left',
   ill: props.trainee.illnessDays > 0,
 }))
+
+const contractDaysLeft = computed(() => {
+  if (!props.trainee.contract) return 0
+  return Math.max(0, props.trainee.contract.endDay - props.currentDay)
+})
+
+const contractStatusClass = computed(() => {
+  const days = contractDaysLeft.value
+  const loyalty = props.trainee.contract?.loyalty || 50
+  if (days <= 0) return 'contract-status expired'
+  if (days <= 7 || loyalty < 30) return 'contract-status critical'
+  if (days <= 30 || loyalty < 50) return 'contract-status warning'
+  return 'contract-status normal'
+})
+
+const contractStatusText = computed(() => {
+  const days = contractDaysLeft.value
+  const loyalty = props.trainee.contract?.loyalty || 50
+  if (days <= 0) return '已到期'
+  if (days <= 7 || loyalty < 30) return '高风险'
+  if (days <= 30 || loyalty < 50) return '需关注'
+  return '合约正常'
+})
+
+const canNegotiate = computed(() => {
+  if (props.trainee.status === 'left') return false
+  if (props.trainee.contract?.pendingOffer) return true
+  const days = contractDaysLeft.value
+  return days <= GAME_CONFIG.contract.warningDaysBeforeExpiry
+})
 </script>
 
 <style scoped>
@@ -148,5 +202,85 @@ const statusClass = computed(() => ({
   margin-top: 0.35rem;
   font-size: 0.8rem;
   color: var(--warning);
+}
+
+.contract-section {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.contract-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.contract-row .contract-label { width: 45px; color: var(--text-muted); }
+.contract-row .contract-val { width: 28px; text-align: right; color: var(--text-muted); }
+
+.bar.small {
+  flex: 1;
+  height: 4px;
+  background: var(--bg-secondary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.bar.small .fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+
+.bar.small .fill.loyalty {
+  background: var(--accent);
+}
+
+.contract-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.contract-status {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.contract-status.normal {
+  background: rgba(76, 175, 80, 0.15);
+  color: #4caf50;
+}
+
+.contract-status.warning {
+  background: rgba(255, 152, 0, 0.15);
+  color: #ff9800;
+}
+
+.contract-status.critical {
+  background: rgba(244, 67, 54, 0.15);
+  color: #f44336;
+}
+
+.contract-status.expired {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.contract-days {
+  color: var(--text-muted);
+}
+
+.contract-btn {
+  width: 100%;
+  font-size: 0.8rem;
+  padding: 0.4rem 0.6rem;
 }
 </style>

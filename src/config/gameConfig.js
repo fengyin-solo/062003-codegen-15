@@ -194,6 +194,25 @@ export const GAME_CONFIG = {
     '方念慈', '宋时雨', '叶知秋', '周慕青', '赵星河',
   ],
 
+  // ── 合约系统 ──
+  contract: {
+    initialTermDays: 180,
+    traineeBaseSalary: 3000,
+    debutedBaseSalary: 8000,
+    baseRevenueShare: 0.15,
+    minRevenueShare: 0.05,
+    maxRevenueShare: 0.5,
+    loyaltyDecayPerDay: 0.08,
+    loyaltyGainOnRenew: 15,
+    warningDaysBeforeExpiry: 30,
+    departureRiskThreshold: 25,
+    fameShareFactor: 0.00008,
+    statShareFactor: 0.001,
+    negotiationRounds: 3,
+    moraleImpactOnReject: 8,
+    moraleImpactOnAccept: 5,
+  },
+
   // ── 存档 ──
   storage: {
     savesKey: 'idol-agency-saves-v1',
